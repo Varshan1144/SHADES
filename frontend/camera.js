@@ -13,8 +13,9 @@ const recommendBtn = document.getElementById("recommend-btn");
 const BUFFER_SIZE = 20;
 const shapeBuffer = [];
 
-// Exported so ui.js can read the stabilized shape when the button fires
-export let currentShape = null;
+// Exported so ui.js can read the stabilized shape and ratios when the button fires
+export let currentShape  = null;
+export let currentRatios = {};
 
 // ─── Landmark indices ────────────────────────────────────────────────────────
 // Chosen to approximate standard anthropometric measurement planes:
@@ -132,7 +133,8 @@ function onResults(results) {
   if (shapeBuffer.length > BUFFER_SIZE) shapeBuffer.shift();
 
   const stable = mode(shapeBuffer);
-  currentShape = stable;
+  currentShape  = stable;
+  currentRatios = ratios;
 
   setStatus(stable.charAt(0).toUpperCase() + stable.slice(1));
   recommendBtn.disabled = false;

@@ -11,11 +11,11 @@
       position: relative;
       display: inline-block;
       line-height: 0;
+      width: 100%;
     }
     #video {
       display: block;
-      width: 640px;
-      max-width: 100%;
+      width: 100%;
     }
     #overlay {
       position: absolute;
@@ -34,19 +34,75 @@
   </header>
 
   <main>
-    <div id="camera-wrap">
-      <video id="video" autoplay playsinline muted></video>
-      <canvas id="overlay"></canvas>
+    <!-- Left: camera + controls -->
+    <div class="left-panel">
+      <div id="camera-wrap">
+        <video id="video" autoplay playsinline muted></video>
+        <canvas id="overlay"></canvas>
+      </div>
+
+      <div id="status-bar">
+        <span class="status-label">Face shape:</span>
+        <span id="shape-label">Initializing…</span>
+      </div>
+
+      <div class="controls">
+        <div class="control-group">
+          <label for="budget-slider">Max Budget</label>
+          <div class="budget-row">
+            <input type="range" id="budget-slider" min="0" max="500" value="500" step="10">
+            <span id="budget-display">$500+</span>
+          </div>
+        </div>
+
+        <div class="control-group">
+          <label for="style-select">Style</label>
+          <select id="style-select">
+            <option value="">Any style</option>
+            <option value="classic">Classic</option>
+            <option value="sporty">Sporty</option>
+            <option value="trendy">Trendy</option>
+            <option value="minimalist">Minimalist</option>
+          </select>
+        </div>
+
+        <div class="control-group">
+          <label for="material-select">Material</label>
+          <select id="material-select">
+            <option value="">Any material</option>
+            <option value="plastic">Plastic</option>
+            <option value="metal">Metal</option>
+            <option value="rimless">Rimless</option>
+          </select>
+        </div>
+      </div>
+
+      <button id="recommend-btn" disabled>Get Recommendations</button>
     </div>
 
-    <div id="status-bar">
-      <span class="status-label">Face shape:</span>
-      <span id="shape-label">Initializing…</span>
-    </div>
+    <!-- Right: results -->
+    <div class="right-panel">
+      <h2>Recommendations</h2>
 
-    <button id="recommend-btn" disabled>Get Recommendations</button>
+      <div id="spinner">
+        <div class="spinner-ring"></div>
+        <span>Asking your AI stylist…</span>
+      </div>
+
+      <div id="error-msg"></div>
+
+      <div id="stylist-note">
+        <div class="stylist-label">AI Stylist's Note</div>
+        <div id="stylist-text"></div>
+      </div>
+
+      <div id="cards-grid">
+        <p class="results-placeholder">Center your face, then click Get Recommendations.</p>
+      </div>
+    </div>
   </main>
 
   <script type="module" src="camera.js"></script>
+  <script type="module" src="ui.js"></script>
 </body>
 </html>

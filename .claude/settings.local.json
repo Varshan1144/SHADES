@@ -1,0 +1,8 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(git -C /Users/varshanreddy/shades status)",
+      "Bash(git -C /Users/varshanreddy/shades diff)"
+    ]
+  }
+}
