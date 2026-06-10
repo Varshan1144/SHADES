@@ -1,0 +1,52 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>SHADES — AI Sunglasses Recommender</title>
+  <link rel="stylesheet" href="style.css">
+  <style>
+    /* Layout-critical overlay styles — canvas must sit exactly on top of video */
+    #camera-wrap {
+      position: relative;
+      display: inline-block;
+      line-height: 0;
+    }
+    #video {
+      display: block;
+      width: 640px;
+      max-width: 100%;
+    }
+    #overlay {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      pointer-events: none;
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>SHADES</h1>
+    <p>AI-Powered Sunglasses Recommender</p>
+  </header>
+
+  <main>
+    <div id="camera-wrap">
+      <video id="video" autoplay playsinline muted></video>
+      <canvas id="overlay"></canvas>
+    </div>
+
+    <div id="status-bar">
+      <span class="status-label">Face shape:</span>
+      <span id="shape-label">Initializing…</span>
+    </div>
+
+    <button id="recommend-btn" disabled>Get Recommendations</button>
+  </main>
+
+  <script type="module" src="camera.js"></script>
+</body>
+</html>
