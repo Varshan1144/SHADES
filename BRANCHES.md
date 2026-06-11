@@ -67,36 +67,69 @@ Diamond → Oblong (similar face geometry, acceptable approximation)
 
 ---
 
+## Branch: fine-tuned
+**Status:** In progress
+
+**Goal:**
+Take the existing pretrained PyTorch model (model_85_nn_.pth) and
+fine-tune it on additional labeled face shape data to improve
+accuracy beyond the current 85%.
+
+**Starting point:**
+Inherits everything from pretrained-model branch.
+Same model file: models/face_shape_hf/model_85_nn_.pth
+Same integration in backend/recommender.py
+
+**Approach:**
+1. Download face shape dataset from Kaggle (niten19/face-shape-dataset)
+   - 5 classes: Heart, Oblong, Oval, Round, Square
+   - ~5000 labeled images
+2. Load existing model_85_nn_.pth
+3. Freeze early layers (keep EfficientNetB4 feature extraction)
+4. Retrain only the final classification layers on new data
+5. Use Mac Metal (mps) backend for GPU acceleration
+6. Save improved model as models/face_shape_finetuned.pth
+7. Update backend/recommender.py to load new model
+
+**Target:** 90%+ accuracy across all 5 shapes
+
+**Dependencies to add:**
+- torch (already installed)
+- torchvision (already installed)
+- kaggle (for dataset download)
+
+**Training plan:**
+- Freeze: EfficientNetB4 backbone layers
+- Unfreeze: Final 2-3 layers + classifier head
+- Optimizer: Adam, lr=0.0001
+- Epochs: 10-20
+- Batch size: 32
+- Augmentation: horizontal flip, rotation ±15°, color jitter
+
+---
+
 ## Branch: train-own-model
 **Status:** Not started
 
 **Goal:**
-Collect a labeled face shape dataset and train our own classifier
-on MediaPipe landmark features. This removes the image dependency
-and keeps everything lightweight.
+Build a face shape classifier completely from scratch.
+No pretrained weights, no existing model.
+Full control over architecture, training data, and pipeline.
 
 **Approach:**
-1. Find dataset on Kaggle/HuggingFace with labeled face shape images
-2. Run MediaPipe on each image, extract 468 landmark coordinates
-3. Compute the 4 ratios as features (or use raw landmarks)
-4. Train scikit-learn SVM or Random Forest
-5. Save model as models/shape_model.pkl
-6. Load and run model in camera.js (via ONNX export) or backend
+1. Collect or download labeled face shape images
+2. Design CNN architecture from scratch
+3. Train on collected data
+4. Export as ONNX for potential browser-side inference
+5. Save as models/shape_model_custom.pth
 
-**Dataset options to try:**
-- Kaggle: "Face Shape Dataset" (search for it)
-- HuggingFace: bkprocovid19/face_shape (used to train fahd9999 model)
-- Manual collection: 50-100 photos per shape, labeled
+**Advantage over other branches:**
+- Complete ownership of the model
+- Can optimize specifically for webcam captures
+- Potentially exportable to run client-side in browser
+- No dependency on external model files
 
-**Target accuracy:** 80%+ across all 5 shapes
-
-**Advantage over pretrained-model branch:**
-- No large model download (torch/transformers is ~500MB)
-- Runs faster — sklearn inference is microseconds
-- Can run client-side in browser via ONNX
-- Fully custom — you own the model
-
-**Disadvantage:**
+**Disadvantage (vs pretrained-model / fine-tuned):**
 - Requires labeled training data
 - More work to set up training pipeline
 - May not reach 85% accuracy without enough data
@@ -123,6 +156,9 @@ git checkout main
 
 # Switch to pretrained model work
 git checkout pretrained-model
+
+# Switch to fine-tuned model work
+git checkout fine-tuned
 
 # Switch to train own model work
 git checkout train-own-model

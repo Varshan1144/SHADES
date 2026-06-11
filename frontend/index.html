@@ -18,6 +18,29 @@
       letter-spacing: 0.01em;
       margin-bottom: 0.5rem;
     }
+    /* AI Classified badge */
+    #ai-classified-badge:not([hidden]) {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.3rem;
+    }
+    #ai-classified-badge {
+      margin-top: 0.55rem;
+      padding: 0.2rem 0.6rem;
+      background: rgba(0, 255, 160, 0.1);
+      border: 1px solid rgba(0, 255, 160, 0.3);
+      border-radius: 12px;
+      color: #00ffa0;
+      font-size: 0.6rem;
+      font-weight: 700;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+    }
+    #ai-classified-badge::before {
+      content: "✦";
+      font-size: 0.5rem;
+      opacity: 0.8;
+    }
     /* Critical overlay positioning — must override external sheet */
     #camera-wrap {
       position: relative;
@@ -53,6 +76,7 @@
         <div class="shape-dominant-wrap">
           <div id="shape-dominant">Initializing…</div>
           <div class="shape-subtitle">Primary Shape</div>
+          <span id="ai-classified-badge" hidden>AI Verified</span>
         </div>
         <div id="conf-bars">
           <div class="conf-row" id="conf-row-oval">

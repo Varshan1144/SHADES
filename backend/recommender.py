@@ -1,10 +1,62 @@
+import base64
+import io
 import json
 import os
 from typing import Optional
 
 import psycopg2
 import psycopg2.extras
+import torch
+import torch.nn.functional as F
+import torchvision.transforms as T
 from anthropic import Anthropic
+from PIL import Image
+
+# ─── PyTorch classifier (loaded once at startup) ──────────────────────────────
+# fahd9999/face_shape_classification — EfficientNet, 85% accuracy.
+# Class order matches inference.py: 0=Heart, 1=Oblong, 2=Oval, 3=Round, 4=Square
+
+_MODEL_PATH = "/Users/varshanreddy/shades/models/face_shape_hf/model_85_nn_.pth"
+_CLASS_LABELS = ["heart", "oblong", "oval", "round", "square"]
+
+_transform = T.Compose([
+    T.Resize((224, 224)),
+    T.ToTensor(),
+    T.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
+])
+
+print("[PT] Loading PyTorch face shape classifier…", flush=True)
+_model = torch.load(_MODEL_PATH, map_location="cpu", weights_only=False)
+_model.eval()
+print("[PT] Classifier ready", flush=True)
+
+
+def classify_face_shape(image_base64: str) -> dict:
+    image_bytes = base64.b64decode(image_base64)
+    image = Image.open(io.BytesIO(image_bytes)).convert("RGB")
+    tensor = _transform(image).unsqueeze(0)  # (1, 3, 224, 224)
+
+    with torch.inference_mode():
+        logits = _model(tensor)
+        probs = F.softmax(logits, dim=1)[0]  # shape (5,)
+
+    scores = {label: float(probs[i]) for i, label in enumerate(_CLASS_LABELS)}
+
+    # Largest-remainder normalisation → integer percentages summing to exactly 100
+    total   = sum(scores.values()) or 1.0
+    scaled  = {k: v / total * 100 for k, v in scores.items()}
+    floored = {k: int(v) for k, v in scaled.items()}
+    rem     = 100 - sum(floored.values())
+    fracs   = sorted(scaled.items(), key=lambda x: x[1] % 1, reverse=True)
+    for i in range(rem):
+        floored[fracs[i][0]] += 1
+
+    face_shape = max(scores, key=scores.get)
+    print(f"[PT] classify → {face_shape} | {floored}", flush=True)
+    # TESTING ONLY — full breakdown sorted by confidence
+    sorted_conf = dict(sorted(floored.items(), key=lambda x: x[1], reverse=True))
+    print(f"[PT] confidence breakdown: {sorted_conf}", flush=True)
+    return {"face_shape": face_shape, "confidence": floored}
 
 
 def filter_database(

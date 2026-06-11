@@ -275,7 +275,7 @@ function normalizeToPercent(avg) {
   return floored;
 }
 
-function updateConfidenceDisplay(confidence, dominant) {
+export function updateConfidenceDisplay(confidence, dominant) {
   for (const shape of SHAPE_ORDER) {
     const els = confEls[shape];
     const pct = confidence[shape] ?? 0;
@@ -288,7 +288,18 @@ function updateConfidenceDisplay(confidence, dominant) {
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
 function setStatus(msg) {
+  if (window.__confidenceLocked) return;
   dominantEl.textContent = msg;
+}
+
+// ─── Frame capture ────────────────────────────────────────────────────────────
+
+export function captureFrame() {
+  const cap = document.createElement("canvas");
+  cap.width  = video.videoWidth  || 640;
+  cap.height = video.videoHeight || 480;
+  cap.getContext("2d").drawImage(video, 0, 0);
+  return cap.toDataURL("image/jpeg", 0.85).split(",")[1];
 }
 
 // ─── Start ────────────────────────────────────────────────────────────────────
