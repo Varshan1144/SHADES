@@ -1,9 +1,10 @@
 import json
-from pathlib import Path
+import os
 from typing import Optional
-from anthropic import Anthropic
 
-DATA_PATH = Path(__file__).parent.parent / "data" / "sunglasses.json"
+import psycopg2
+import psycopg2.extras
+from anthropic import Anthropic
 
 
 def filter_database(
@@ -13,17 +14,39 @@ def filter_database(
     style: Optional[str] = None,
     material: Optional[str] = None,
 ) -> list:
-    with open(DATA_PATH) as f:
-        db = json.load(f)
-    results = [
-        item
-        for item in db
-        if shape in item["face_shapes"]
-        and budget_min <= item["price"] <= budget_max
-        and (style is None or item["style"] == style)
-        and (material is None or item["material"] == material)
-    ]
-    return results[:10]
+    conn = psycopg2.connect(os.environ["DATABASE_URL"])
+    try:
+        with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+            cur.execute(
+                """
+                SELECT id, brand, model, style, price, face_shapes, material, link, image_url
+                FROM sunglasses
+                WHERE %(shape)s = ANY(face_shapes)
+                  AND price >= %(budget_min)s
+                  AND price <= %(budget_max)s
+                  AND (%(style)s IS NULL OR style = %(style)s)
+                  AND (%(material)s IS NULL OR material = %(material)s)
+                ORDER BY price
+                LIMIT 10
+                """,
+                {
+                    "shape": shape,
+                    "budget_min": budget_min,
+                    "budget_max": budget_max,
+                    "style": style,
+                    "material": material,
+                },
+            )
+            rows = cur.fetchall()
+    finally:
+        conn.close()
+
+    result = []
+    for row in rows:
+        d = dict(row)
+        d["price"] = int(d["price"])
+        result.append(d)
+    return result
 
 
 def get_recommendation(
