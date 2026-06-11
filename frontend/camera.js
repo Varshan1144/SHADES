@@ -9,9 +9,10 @@ const ctx          = canvas.getContext("2d");
 const shapeEl      = document.getElementById("shape-label");
 const recommendBtn = document.getElementById("recommend-btn");
 
-// Rolling buffer for temporal smoothing
+// Rolling buffer for temporal smoothing on per-frame scores
 const BUFFER_SIZE = 20;
-const shapeBuffer = [];
+const scoreBuffer = [];
+let frameCount = 0;
 
 // Exported so ui.js can read the stabilized shape and ratios when the button fires
 export let currentShape  = null;
@@ -126,13 +127,27 @@ function onResults(results) {
 
   drawDots(lm);
 
+  frameCount++;
   const ratios = computeRatios(lm);
-  const shape  = classify(ratios);
+  const scores = scoreShapes(ratios);
 
-  shapeBuffer.push(shape);
-  if (shapeBuffer.length > BUFFER_SIZE) shapeBuffer.shift();
+  scoreBuffer.push(scores);
+  if (scoreBuffer.length > BUFFER_SIZE) scoreBuffer.shift();
 
-  const stable = mode(shapeBuffer);
+  if (frameCount % 60 === 0) {
+    console.log("[SHADES] ratios:", {
+      faceRatio:       +ratios.faceRatio.toFixed(3),
+      foreheadToCheek: +ratios.foreheadToCheek.toFixed(3),
+      cheekToJaw:      +ratios.cheekToJaw.toFixed(3),
+      foreheadToJaw:   +ratios.foreheadToJaw.toFixed(3),
+    });
+    console.log("[SHADES] avg scores:", Object.fromEntries(
+      Object.entries(averageScores(scoreBuffer)).map(([k, v]) => [k, +v.toFixed(3)])
+    ));
+  }
+
+  const avg    = averageScores(scoreBuffer);
+  const stable = Object.entries(avg).sort((a, b) => b[1] - a[1])[0][0];
   currentShape  = stable;
   currentRatios = ratios;
 
@@ -174,35 +189,44 @@ function computeRatios(lm) {
   };
 }
 
-// ─── Classification ───────────────────────────────────────────────────────────
+// ─── Classification (scoring) ─────────────────────────────────────────────────
 //
-// Thresholds derived from standard anthropometric face shape definitions.
-// Order matters: most distinctive shapes checked first to avoid mis-classification.
+// Each shape gets a continuous 0–1 score based on how well the ratios match its
+// geometric profile. Scores are averaged over the last BUFFER_SIZE frames and
+// the highest average wins — more robust than hard thresholds.
 
-function classify({ faceRatio, foreheadToCheek, cheekToJaw, foreheadToJaw }) {
-  // Oblong: face is notably longer than it is wide
-  if (faceRatio > 1.75) return "oblong";
+function scoreShapes({ faceRatio, foreheadToCheek, cheekToJaw }) {
+  return {
+    round:  mean(near(faceRatio, 1.0, 0.4),  near(cheekToJaw, 1.0, 0.35)),
+    oval:   mean(near(faceRatio, 1.4, 0.35), near(foreheadToCheek, 0.875, 0.25)),
+    square: mean(near(faceRatio, 1.1, 0.25), near(cheekToJaw, 1.0, 0.25), near(foreheadToCheek, 1.0, 0.2)),
+    heart:  mean(above(foreheadToCheek, 1.0, 0.3), above(cheekToJaw, 1.2, 0.3)),
+    oblong: above(faceRatio, 1.5, 0.5),
+  };
+}
 
-  // Heart: wide forehead tapers to a narrow jaw
-  if (foreheadToJaw > 1.35 && foreheadToCheek >= 0.98) return "heart";
+// 1 at target, falls linearly to 0 at ±spread
+function near(value, target, spread) {
+  return Math.max(0, 1 - Math.abs(value - target) / spread);
+}
 
-  // Square: widths are all similar AND the face is not too long
-  if (faceRatio < 1.5 && cheekToJaw < 1.2 && foreheadToCheek > 0.9 && foreheadToCheek < 1.1) return "square";
+// 0 at threshold, ramps linearly to 1 over spread
+function above(value, threshold, spread) {
+  return Math.max(0, Math.min(1, (value - threshold) / spread));
+}
 
-  // Round: not long, cheeks not dramatically wider than jaw (soft profile)
-  if (faceRatio < 1.5 && cheekToJaw < 1.25) return "round";
-
-  // Oval: balanced proportions — the catch-all default
-  return "oval";
+function mean(...vals) {
+  return vals.reduce((s, v) => s + v, 0) / vals.length;
 }
 
 // ─── Temporal smoothing ───────────────────────────────────────────────────────
 
-// Returns the most frequent element in arr (statistical mode)
-function mode(arr) {
-  const counts = {};
-  for (const s of arr) counts[s] = (counts[s] || 0) + 1;
-  return Object.entries(counts).sort((a, b) => b[1] - a[1])[0][0];
+function averageScores(buffer) {
+  const sums = { round: 0, oval: 0, square: 0, heart: 0, oblong: 0 };
+  for (const s of buffer) for (const k of Object.keys(sums)) sums[k] += s[k];
+  const n = buffer.length;
+  for (const k of Object.keys(sums)) sums[k] /= n;
+  return sums;
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
