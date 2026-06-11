@@ -1,37 +1,39 @@
-import { currentShape, currentRatios } from "./camera.js";
+import { currentShape, currentRatios, currentConfidence } from "./camera.js";
 
-const budgetSlider  = document.getElementById("budget-slider");
-const budgetDisplay = document.getElementById("budget-display");
-const styleSelect   = document.getElementById("style-select");
-const materialSelect= document.getElementById("material-select");
-const recommendBtn  = document.getElementById("recommend-btn");
-const spinner       = document.getElementById("spinner");
-const errorMsg      = document.getElementById("error-msg");
-const stylistNote   = document.getElementById("stylist-note");
-const stylistText   = document.getElementById("stylist-text");
-const cardsGrid     = document.getElementById("cards-grid");
+const budgetMinInput = document.getElementById("budget-min");
+const budgetMaxInput = document.getElementById("budget-max");
+const styleSelect    = document.getElementById("style-select");
+const materialSelect = document.getElementById("material-select");
+const recommendBtn   = document.getElementById("recommend-btn");
+const cameraWrap     = document.getElementById("camera-wrap");
+const spinner        = document.getElementById("spinner");
+const errorMsg       = document.getElementById("error-msg");
+const stylistNote    = document.getElementById("stylist-note");
+const stylistText    = document.getElementById("stylist-text");
+const cardsGrid      = document.getElementById("cards-grid");
 
 const API_URL = "http://localhost:8001/recommend";
 
-// Live budget label
-budgetSlider.addEventListener("input", () => {
-  const v = parseInt(budgetSlider.value, 10);
-  budgetDisplay.textContent = v >= 500 ? "$500+" : `$${v}`;
-});
+// ─── Camera pulse ──────────────────────────────────────────────────────────
+// Purely presentational: adds .face-detected when button is enabled (face locked).
+new MutationObserver(() => {
+  cameraWrap.classList.toggle("face-detected", !recommendBtn.disabled);
+}).observe(recommendBtn, { attributes: true, attributeFilter: ["disabled"] });
+
+// ─── Recommend ─────────────────────────────────────────────────────────────
 
 recommendBtn.addEventListener("click", async () => {
   const shape = currentShape;
   if (!shape) return;
 
-  const budgetMax = parseInt(budgetSlider.value, 10);
-
   const body = {
-    face_shape: shape,
-    ratios: currentRatios,
-    budget_min: 0,
-    budget_max: budgetMax >= 500 ? 10000 : budgetMax,
-    style:    styleSelect.value    || null,
-    material: materialSelect.value || null,
+    face_shape:  shape,
+    ratios:      currentRatios,
+    confidence:  currentConfidence,
+    budget_min:  Number(budgetMinInput.value) || 0,
+    budget_max:  Number(budgetMaxInput.value) || 10000,
+    style:       styleSelect.value    || null,
+    material:    materialSelect.value || null,
   };
 
   setLoading(true);
@@ -49,8 +51,7 @@ recommendBtn.addEventListener("click", async () => {
       throw new Error(payload.detail || `Server error ${res.status}`);
     }
 
-    const data = await res.json();
-    renderResults(data);
+    renderResults(await res.json());
   } catch (err) {
     showError(err.message);
   } finally {
@@ -58,7 +59,7 @@ recommendBtn.addEventListener("click", async () => {
   }
 });
 
-// ─── State helpers ────────────────────────────────────────────────────────────
+// ─── State helpers ──────────────────────────────────────────────────────────
 
 function setLoading(on) {
   spinner.classList.toggle("visible", on);
@@ -69,7 +70,7 @@ function clearResults() {
   errorMsg.classList.remove("visible");
   errorMsg.textContent = "";
   stylistNote.classList.remove("visible");
-  stylistText.textContent = "";
+  stylistText.innerHTML = "";
   cardsGrid.innerHTML = "";
 }
 
@@ -78,22 +79,24 @@ function showError(msg) {
   errorMsg.classList.add("visible");
 }
 
-// ─── Rendering ────────────────────────────────────────────────────────────────
+// ─── Rendering ──────────────────────────────────────────────────────────────
 
-function renderResults({ candidates, explanation }) {
+function renderResults({ candidates, explanation, source }) {
+  if (source === "ai_search") {
+    const banner = document.createElement("div");
+    banner.className = "ai-search-banner";
+    banner.textContent = "No exact matches in our catalog — here are AI-sourced suggestions";
+    cardsGrid.appendChild(banner);
+  }
+
   if (explanation) {
-    stylistText.textContent = explanation;
+    stylistText.innerHTML = parseMarkdown(explanation);
     stylistNote.classList.add("visible");
   }
 
-  if (!candidates?.length) {
-    cardsGrid.innerHTML = '<p class="results-placeholder">No matches found — try broadening your filters.</p>';
-    return;
-  }
+  if (!candidates?.length) return;
 
-  for (const item of candidates) {
-    cardsGrid.appendChild(buildCard(item));
-  }
+  for (const item of candidates) cardsGrid.appendChild(buildCard(item));
 }
 
 function buildCard(item) {
@@ -133,7 +136,32 @@ function buildCard(item) {
   return card;
 }
 
-// ─── Utilities ────────────────────────────────────────────────────────────────
+// ─── Markdown parser ────────────────────────────────────────────────────────
+
+function parseMarkdown(text) {
+  return text
+    // 1. HTML-escape raw content first
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    // 2. Block elements (### must come before ##)
+    .replace(/^---$/gm, "<hr>")
+    .replace(/^### (.+)$/gm, "<h3>$1</h3>")
+    .replace(/^## (.+)$/gm, "<h2>$1</h2>")
+    .replace(/^&gt; (.+)$/gm, "<blockquote>$1</blockquote>")  // > was escaped above
+    // 3. Inline elements
+    .replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>")
+    .replace(/\*(.+?)\*/g,     "<em>$1</em>")
+    .replace(/\[([^\]]+)\]\(([^)]+)\)/g, (_, linkText, rawUrl) => {
+      const url = rawUrl.replace(/&amp;/g, "&");
+      const safe = /^https?:\/\//.test(url) ? url : "#";
+      return `<a href="${safe}" target="_blank" rel="noopener noreferrer">${linkText}</a>`;
+    })
+    // 4. Line breaks
+    .replace(/\n/g, "<br>");
+}
+
+// ─── Utilities ──────────────────────────────────────────────────────────────
 
 function esc(str) {
   return String(str ?? "")
@@ -147,7 +175,5 @@ function isSafeUrl(url) {
   try {
     const { protocol } = new URL(url);
     return protocol === "https:" || protocol === "http:";
-  } catch {
-    return false;
-  }
+  } catch { return false; }
 }

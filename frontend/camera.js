@@ -6,33 +6,44 @@ import {
 const video        = document.getElementById("video");
 const canvas       = document.getElementById("overlay");
 const ctx          = canvas.getContext("2d");
-const shapeEl      = document.getElementById("shape-label");
+const dominantEl   = document.getElementById("shape-dominant");
 const recommendBtn = document.getElementById("recommend-btn");
+
+const confEls = {
+  oval:   { bar: document.getElementById("conf-bar-oval"),   pct: document.getElementById("conf-pct-oval"),   row: document.getElementById("conf-row-oval")   },
+  round:  { bar: document.getElementById("conf-bar-round"),  pct: document.getElementById("conf-pct-round"),  row: document.getElementById("conf-row-round")  },
+  square: { bar: document.getElementById("conf-bar-square"), pct: document.getElementById("conf-pct-square"), row: document.getElementById("conf-row-square") },
+  heart:  { bar: document.getElementById("conf-bar-heart"),  pct: document.getElementById("conf-pct-heart"),  row: document.getElementById("conf-row-heart")  },
+  oblong: { bar: document.getElementById("conf-bar-oblong"), pct: document.getElementById("conf-pct-oblong"), row: document.getElementById("conf-row-oblong") },
+};
 
 // Rolling buffer for temporal smoothing on per-frame scores
 const BUFFER_SIZE = 20;
 const scoreBuffer = [];
 let frameCount = 0;
 
-// Exported so ui.js can read the stabilized shape and ratios when the button fires
-export let currentShape  = null;
-export let currentRatios = {};
+// Exported so ui.js can read the stabilized shape, ratios, and confidence on button fire
+export let currentShape      = null;
+export let currentRatios     = {};
+export let currentConfidence = {};
+
+const SHAPE_ORDER = ["oval", "round", "square", "heart", "oblong"];
 
 // ─── Landmark indices ────────────────────────────────────────────────────────
-// Chosen to approximate standard anthropometric measurement planes:
-//   faceTop/chin  → face length
-//   forehead L/R  → lateral hairline (not brow — gives true forehead width)
-//   cheek L/R     → zygomatic arch (widest point of face)
-//   jaw L/R       → gonion (jaw angle), standard for jaw width
+// Verified MediaPipe indices for accurate anthropometric measurement:
+//   10/152    → face height (forehead center → chin)
+//   234/454   → cheekbone width (zygomatic arch, widest face point)
+//   70/300    → forehead width proxy (outer eyebrow — best sparse-coverage point)
+//   172/397   → jaw width (lower jaw angle)
 const LM = {
-  faceTop:       10,
+  top:           10,
   chin:         152,
-  foreheadLeft: 103,
-  foreheadRight: 332,
   cheekLeft:    234,
   cheekRight:   454,
-  jawLeft:      136,
-  jawRight:     365,
+  foreheadLeft:  70,
+  foreheadRight: 300,
+  jawLeft:       172,
+  jawRight:      397,
 };
 
 // ─── Init ────────────────────────────────────────────────────────────────────
@@ -117,8 +128,13 @@ function onResults(results) {
   ctx.clearRect(0, 0, canvas.width, canvas.height);
 
   if (!results.faceLandmarks?.length) {
-    setStatus("No face detected — center your face");
+    setStatus("No face detected");
     recommendBtn.disabled = true;
+    for (const shape of SHAPE_ORDER) {
+      confEls[shape].bar.style.width = "0%";
+      confEls[shape].pct.textContent = "—";
+      confEls[shape].row.classList.remove("is-dominant");
+    }
     return;
   }
 
@@ -134,7 +150,7 @@ function onResults(results) {
   scoreBuffer.push(scores);
   if (scoreBuffer.length > BUFFER_SIZE) scoreBuffer.shift();
 
-  if (frameCount % 60 === 0) {
+  if (frameCount % 30 === 0) {
     console.log("[SHADES] ratios:", {
       faceRatio:       +ratios.faceRatio.toFixed(3),
       foreheadToCheek: +ratios.foreheadToCheek.toFixed(3),
@@ -142,16 +158,22 @@ function onResults(results) {
       foreheadToJaw:   +ratios.foreheadToJaw.toFixed(3),
     });
     console.log("[SHADES] avg scores:", Object.fromEntries(
-      Object.entries(averageScores(scoreBuffer)).map(([k, v]) => [k, +v.toFixed(3)])
+      Object.entries(averageScores(scoreBuffer)).map(([k, v]) => [k, +v.toFixed(4)])
     ));
   }
 
-  const avg    = averageScores(scoreBuffer);
-  const stable = Object.entries(avg).sort((a, b) => b[1] - a[1])[0][0];
-  currentShape  = stable;
-  currentRatios = ratios;
+  const avg        = averageScores(scoreBuffer);
+  const stable     = Object.entries(avg).sort((a, b) => b[1] - a[1])[0][0];
+  const confidence = normalizeToPercent(avg);
 
-  setStatus(stable.charAt(0).toUpperCase() + stable.slice(1));
+  currentShape      = stable;
+  currentRatios     = ratios;
+  currentConfidence = confidence;
+
+  if (frameCount % 10 === 0) {
+    setStatus(stable.charAt(0).toUpperCase() + stable.slice(1));
+    updateConfidenceDisplay(confidence, stable);
+  }
   recommendBtn.disabled = false;
 }
 
@@ -176,16 +198,16 @@ function px(a, b) {
 }
 
 function computeRatios(lm) {
-  const faceLength    = px(lm[LM.faceTop],        lm[LM.chin]);
+  const faceHeight    = px(lm[LM.top],           lm[LM.chin]);
+  const faceWidth     = px(lm[LM.cheekLeft],      lm[LM.cheekRight]);
   const foreheadWidth = px(lm[LM.foreheadLeft],   lm[LM.foreheadRight]);
-  const cheekWidth    = px(lm[LM.cheekLeft],       lm[LM.cheekRight]);
   const jawWidth      = px(lm[LM.jawLeft],         lm[LM.jawRight]);
 
   return {
-    faceRatio:       faceLength    / cheekWidth,   // > 1.75 → oblong; < 1.5 → round/square
-    foreheadToCheek: foreheadWidth / cheekWidth,   // > 1.0 → forehead wider than cheeks
-    cheekToJaw:      cheekWidth    / jawWidth,      // > 1.2 → cheeks clearly wider than jaw
-    foreheadToJaw:   foreheadWidth / jawWidth,      // > 1.35 → heart shape indicator
+    faceRatio:       faceHeight    / faceWidth,    // oval 1.3–1.6
+    foreheadToCheek: foreheadWidth / faceWidth,    // oval 0.75–0.95
+    cheekToJaw:      faceWidth     / jawWidth,     // oval 1.1–1.4
+    foreheadToJaw:   foreheadWidth / jawWidth,     // oval 0.85–1.1
   };
 }
 
@@ -195,28 +217,36 @@ function computeRatios(lm) {
 // geometric profile. Scores are averaged over the last BUFFER_SIZE frames and
 // the highest average wins — more robust than hard thresholds.
 
-function scoreShapes({ faceRatio, foreheadToCheek, cheekToJaw }) {
-  return {
-    round:  mean(near(faceRatio, 1.0, 0.4),  near(cheekToJaw, 1.0, 0.35)),
-    oval:   mean(near(faceRatio, 1.4, 0.35), near(foreheadToCheek, 0.875, 0.25)),
-    square: mean(near(faceRatio, 1.1, 0.25), near(cheekToJaw, 1.0, 0.25), near(foreheadToCheek, 1.0, 0.2)),
-    heart:  mean(above(foreheadToCheek, 1.0, 0.3), above(cheekToJaw, 1.2, 0.3)),
-    oblong: above(faceRatio, 1.5, 0.5),
-  };
+// Anthropometrically calibrated shape profiles: [min, max] for each ratio.
+// rangeScore peaks at 1.0 in the center of [min,max] and decays with a
+// gaussian envelope toward the edges, so scores compose multiplicatively
+// without any single ratio dominating via hard cutoffs.
+const PROFILES = {
+  oval:   { faceRatio: [1.30, 1.75], foreheadToCheek: [0.75, 0.95], cheekToJaw: [1.10, 1.40], foreheadToJaw: [0.85, 1.10] },
+  round:  { faceRatio: [0.85, 1.20], foreheadToCheek: [0.85, 1.00], cheekToJaw: [1.00, 1.20], foreheadToJaw: [0.90, 1.10] },
+  square: { faceRatio: [0.95, 1.25], foreheadToCheek: [0.90, 1.05], cheekToJaw: [0.95, 1.15], foreheadToJaw: [0.95, 1.10] },
+  heart:  { faceRatio: [1.20, 1.60], foreheadToCheek: [1.00, 1.30], cheekToJaw: [1.20, 1.70], foreheadToJaw: [1.30, 1.90] },
+  oblong: { faceRatio: [1.75, 2.50], foreheadToCheek: [0.80, 1.00], cheekToJaw: [1.00, 1.30], foreheadToJaw: [0.85, 1.10] },
+};
+
+// Gaussian decay: 1.0 at center of [min,max], falls to ~0.14 at the edges
+function rangeScore(value, min, max) {
+  const center    = (min + max) / 2;
+  const halfWidth = (max - min) / 2;
+  const t         = (value - center) / halfWidth;
+  return Math.exp(-2 * t * t);
 }
 
-// 1 at target, falls linearly to 0 at ±spread
-function near(value, target, spread) {
-  return Math.max(0, 1 - Math.abs(value - target) / spread);
-}
-
-// 0 at threshold, ramps linearly to 1 over spread
-function above(value, threshold, spread) {
-  return Math.max(0, Math.min(1, (value - threshold) / spread));
-}
-
-function mean(...vals) {
-  return vals.reduce((s, v) => s + v, 0) / vals.length;
+function scoreShapes({ faceRatio, foreheadToCheek, cheekToJaw, foreheadToJaw }) {
+  const scores = {};
+  for (const [shape, profile] of Object.entries(PROFILES)) {
+    scores[shape] =
+      rangeScore(faceRatio,       profile.faceRatio[0],       profile.faceRatio[1])       *
+      rangeScore(foreheadToCheek, profile.foreheadToCheek[0], profile.foreheadToCheek[1]) *
+      rangeScore(cheekToJaw,      profile.cheekToJaw[0],      profile.cheekToJaw[1])       *
+      rangeScore(foreheadToJaw,   profile.foreheadToJaw[0],   profile.foreheadToJaw[1]);
+  }
+  return scores;
 }
 
 // ─── Temporal smoothing ───────────────────────────────────────────────────────
@@ -229,10 +259,36 @@ function averageScores(buffer) {
   return sums;
 }
 
+// Converts raw avg scores to integer percentages summing to exactly 100.
+// Uses largest-remainder method to avoid off-by-one rounding errors.
+function normalizeToPercent(avg) {
+  const total = Object.values(avg).reduce((s, v) => s + v, 0);
+  if (total === 0) return Object.fromEntries(SHAPE_ORDER.map(k => [k, 0]));
+  const scaled  = Object.fromEntries(Object.entries(avg).map(([k, v]) => [k, (v / total) * 100]));
+  const floored = Object.fromEntries(Object.entries(scaled).map(([k, v]) => [k, Math.floor(v)]));
+  const remainder = 100 - Object.values(floored).reduce((s, v) => s + v, 0);
+  Object.entries(scaled)
+    .map(([k, v]) => [k, v - Math.floor(v)])
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, remainder)
+    .forEach(([k]) => floored[k]++);
+  return floored;
+}
+
+function updateConfidenceDisplay(confidence, dominant) {
+  for (const shape of SHAPE_ORDER) {
+    const els = confEls[shape];
+    const pct = confidence[shape] ?? 0;
+    els.bar.style.width = `${pct}%`;
+    els.pct.textContent = `${pct}%`;
+    els.row.classList.toggle("is-dominant", shape === dominant);
+  }
+}
+
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
 function setStatus(msg) {
-  shapeEl.textContent = msg;
+  dominantEl.textContent = msg;
 }
 
 // ─── Start ────────────────────────────────────────────────────────────────────

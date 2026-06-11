@@ -3,90 +3,131 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>SHADES — AI Sunglasses Recommender</title>
+  <title>SHADES — Find Your Perfect Pair</title>
   <link rel="stylesheet" href="style.css">
   <style>
-    /* Layout-critical overlay styles — canvas must sit exactly on top of video */
+    /* AI-search fallback banner */
+    .ai-search-banner {
+      grid-column: 1 / -1;
+      padding: 0.6rem 1rem;
+      border-radius: 8px;
+      background: rgba(251, 191, 36, 0.08);
+      border: 1px solid rgba(251, 191, 36, 0.3);
+      color: #fbbf24;
+      font-size: 0.82rem;
+      letter-spacing: 0.01em;
+      margin-bottom: 0.5rem;
+    }
+    /* Critical overlay positioning — must override external sheet */
     #camera-wrap {
       position: relative;
-      display: inline-block;
+      display: block;
       line-height: 0;
       width: 100%;
+      border-radius: 14px;
+      overflow: hidden;
     }
-    #video {
-      display: block;
-      width: 100%;
-    }
-    #overlay {
-      position: absolute;
-      top: 0;
-      left: 0;
-      width: 100%;
-      height: 100%;
-      pointer-events: none;
-    }
+    #video   { display: block; width: 100%; }
+    #overlay { position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; }
   </style>
 </head>
 <body>
+
   <header>
-    <h1>SHADES</h1>
-    <p>AI-Powered Sunglasses Recommender</p>
+    <h1 class="logo-word">SHADES</h1>
+    <p class="logo-tagline">Find your perfect pair</p>
   </header>
 
   <main>
-    <!-- Left: camera + controls -->
+
+    <!-- ── Left panel ── -->
     <div class="left-panel">
+
       <div id="camera-wrap">
         <video id="video" autoplay playsinline muted></video>
         <canvas id="overlay"></canvas>
+        <div class="scan-line"></div>
       </div>
 
-      <div id="status-bar">
-        <span class="status-label">Face shape:</span>
-        <span id="shape-label">Initializing…</span>
+      <div id="shape-confidence">
+        <div class="shape-dominant-wrap">
+          <div id="shape-dominant">Initializing…</div>
+          <div class="shape-subtitle">Primary Shape</div>
+        </div>
+        <div id="conf-bars">
+          <div class="conf-row" id="conf-row-oval">
+            <span class="conf-label">Oval</span>
+            <div class="conf-bar-track"><div class="conf-bar-fill" id="conf-bar-oval"></div></div>
+            <span class="conf-pct" id="conf-pct-oval">—</span>
+          </div>
+          <div class="conf-row" id="conf-row-round">
+            <span class="conf-label">Round</span>
+            <div class="conf-bar-track"><div class="conf-bar-fill" id="conf-bar-round"></div></div>
+            <span class="conf-pct" id="conf-pct-round">—</span>
+          </div>
+          <div class="conf-row" id="conf-row-square">
+            <span class="conf-label">Square</span>
+            <div class="conf-bar-track"><div class="conf-bar-fill" id="conf-bar-square"></div></div>
+            <span class="conf-pct" id="conf-pct-square">—</span>
+          </div>
+          <div class="conf-row" id="conf-row-heart">
+            <span class="conf-label">Heart</span>
+            <div class="conf-bar-track"><div class="conf-bar-fill" id="conf-bar-heart"></div></div>
+            <span class="conf-pct" id="conf-pct-heart">—</span>
+          </div>
+          <div class="conf-row" id="conf-row-oblong">
+            <span class="conf-label">Oblong</span>
+            <div class="conf-bar-track"><div class="conf-bar-fill" id="conf-bar-oblong"></div></div>
+            <span class="conf-pct" id="conf-pct-oblong">—</span>
+          </div>
+        </div>
       </div>
 
       <div class="controls">
         <div class="control-group">
-          <label for="budget-slider">Max Budget</label>
+          <label>Price Range</label>
           <div class="budget-row">
-            <input type="range" id="budget-slider" min="0" max="500" value="500" step="10">
-            <span id="budget-display">$500+</span>
+            <span class="budget-prefix">Min $</span>
+            <input type="number" id="budget-min" min="0" max="10000" value="0" step="10">
+            <span class="budget-sep">—</span>
+            <span class="budget-prefix">Max $</span>
+            <input type="number" id="budget-max" min="0" max="10000" value="500" step="10">
           </div>
         </div>
 
-        <div class="control-group">
-          <label for="style-select">Style</label>
-          <select id="style-select">
-            <option value="">Any style</option>
-            <option value="classic">Classic</option>
-            <option value="sporty">Sporty</option>
-            <option value="trendy">Trendy</option>
-            <option value="minimalist">Minimalist</option>
-          </select>
-        </div>
-
-        <div class="control-group">
-          <label for="material-select">Material</label>
-          <select id="material-select">
-            <option value="">Any material</option>
-            <option value="plastic">Plastic</option>
-            <option value="metal">Metal</option>
-            <option value="rimless">Rimless</option>
-          </select>
+        <div class="controls-row">
+          <div class="control-group">
+            <label for="style-select">Style</label>
+            <select id="style-select">
+              <option value="">Any</option>
+              <option value="classic">Classic</option>
+              <option value="sporty">Sporty</option>
+              <option value="trendy">Trendy</option>
+              <option value="minimalist">Minimalist</option>
+            </select>
+          </div>
+          <div class="control-group">
+            <label for="material-select">Material</label>
+            <select id="material-select">
+              <option value="">Any</option>
+              <option value="plastic">Plastic</option>
+              <option value="metal">Metal</option>
+              <option value="rimless">Rimless</option>
+            </select>
+          </div>
         </div>
       </div>
 
       <button id="recommend-btn" disabled>Get Recommendations</button>
+
     </div>
 
-    <!-- Right: results -->
+    <!-- ── Right panel ── -->
     <div class="right-panel">
-      <h2>Recommendations</h2>
 
       <div id="spinner">
         <div class="spinner-ring"></div>
-        <span>Asking your AI stylist…</span>
+        <span>Consulting your AI stylist…</span>
       </div>
 
       <div id="error-msg"></div>
@@ -97,8 +138,18 @@
       </div>
 
       <div id="cards-grid">
-        <p class="results-placeholder">Center your face, then click Get Recommendations.</p>
+        <div class="results-placeholder">
+          <svg class="placeholder-icon" viewBox="0 0 88 44" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <rect x="2.5" y="9" width="33" height="26" rx="13" stroke="currentColor" stroke-width="2.5"/>
+            <rect x="52.5" y="9" width="33" height="26" rx="13" stroke="currentColor" stroke-width="2.5"/>
+            <path d="M35.5 21.5h17" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"/>
+            <path d="M2.5 21.5C2.5 15 6.5 4.5 15.5 4.5" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+            <path d="M85.5 21.5C85.5 15 81.5 4.5 72.5 4.5" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+          </svg>
+          <p>Allow camera access and center your face,<br>then click <strong>Get Recommendations</strong>.</p>
+        </div>
       </div>
+
     </div>
   </main>
 
